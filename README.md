@@ -6,6 +6,16 @@ Built with Python, FastAPI, SQLAlchemy and SQLite.
 
 **Test case sheet:** [Google Sheet](https://docs.google.com/spreadsheets/d/1nB3-jVa17EKDzB4DhaVCn0ZFpeG1qlxXEA1b57c6KQE/edit?usp=sharing)
 
+## Check that it works (no setup needed)
+
+The file [`static/api-checker.html`](static/api-checker.html) runs 36 checks against the API in the browser and shows a pass or fail for each one. It covers every endpoint, the error cases and the spec's sample network (ServerA → ServerD = 23.4).
+
+- **Live:** open `https://network-latency-router.onrender.com/check` and click **Run all checks**.
+- **Downloaded file:** double-click `api-checker.html` to open it in any browser, then click **Run all checks**. The live API address is already filled in.
+- **Local server:** start the server (see below), open http://127.0.0.1:8000/check and click **Run all checks**.
+
+Each run uses its own node names and deletes its test data afterwards, so it can be run any number of times.
+
 ## How to run
 
 You need Python 3.9 or newer.
