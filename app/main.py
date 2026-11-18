@@ -1,9 +1,11 @@
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, aliased
@@ -15,6 +17,21 @@ from .routing import build_graph, shortest_path
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Network Route Optimization API", version="1.0.0")
+
+# allow the API checker page to call the API even when opened as a local file
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+CHECKER_PAGE = Path(__file__).resolve().parent.parent / "static" / "api-checker.html"
+
+
+@app.get("/", include_in_schema=False)
+def root():
+    return RedirectResponse(url="/docs")
+
+
+@app.get("/check", include_in_schema=False)
+def checker_page():
+    return FileResponse(CHECKER_PAGE)
 
 
 # return all errors as {"error": "..."}

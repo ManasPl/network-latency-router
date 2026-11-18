@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Route API Checker</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6b66; --border: #e3e3de;
+    --accent: #2f5bd3; --accent-text: #ffffff; --pass: #1f7a3d; --pass-bg: #e6f4ea;
+    --fail: #b3261e; --fail-bg: #fbe9e7; --run: #8a6d00; --run-bg: #fff6d6; --code-bg: #f1f1ee;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161615; --panel: #1f1f1d; --text: #ececea; --muted: #a0a09a; --border: #33332f;
+      --accent: #7b9cff; --accent-text: #0d0d0c; --pass: #6fd08c; --pass-bg: #17301f;
+      --fail: #ff8a80; --fail-bg: #3a1a17; --run: #f0cf5a; --run-bg: #33290a; --code-bg: #262624;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+  label { display: block; font-weight: 600; margin-bottom: 6px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  input[type=url] { flex: 1 1 320px; min-width: 0; padding: 10px 12px; font-size: 15px; border-radius: 8px;
+                    border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+  button { padding: 10px 20px; font-size: 15px; font-weight: 600; border: 0; border-radius: 8px;
+           background: var(--accent); color: var(--accent-text); cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  .opts { margin-top: 12px; color: var(--muted); font-size: 14px; display: flex; gap: 8px; align-items: center; }
+  .hint { color: var(--muted); font-size: 14px; margin: 12px 0 0; }
+  .status { padding: 14px 16px; border-radius: 10px; font-weight: 600; margin-bottom: 20px; display: none; }
+  .status.run { display: block; background: var(--run-bg); color: var(--run); }
+  .status.pass { display: block; background: var(--pass-bg); color: var(--pass); }
+  .status.fail { display: block; background: var(--fail-bg); color: var(--fail); }
+  .tablewrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 13px; }
+  td.n { color: var(--muted); width: 32px; }
+  td.area { white-space: nowrap; color: var(--muted); }
+  code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; word-break: break-all; }
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-weight: 700; font-size: 12.5px; white-space: nowrap; }
+  .badge.pass { background: var(--pass-bg); color: var(--pass); }
+  .badge.fail { background: var(--fail-bg); color: var(--fail); }
+  .badge.wait { background: var(--code-bg); color: var(--muted); }
+  .detail { color: var(--fail); font-size: 13px; margin-top: 4px; word-break: break-word; }
+  footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Network Route API: checker</h1>
+  <p class="sub">Runs 36 checks against the API and shows a pass or fail for each one. Nothing needs to be installed.</p>
+
+  <div class="panel">
+    <label for="url">API address</label>
+    <div class="row">
+      <input id="url" type="url" spellcheck="false" autocomplete="off">
+      <button id="run">Run all checks</button>
+    </div>
+    <div class="opts">
+      <input id="cleanup" type="checkbox" checked>
+      <label for="cleanup" style="display:inline;font-weight:400;margin:0">Delete the test data afterwards</label>
+    </div>
+    <p class="hint">The live demo is on a free server that sleeps when idle. The first run can take up to a minute while it wakes up.</p>
+  </div>
+
+  <div id="status" class="status"></div>
+
+  <div class="panel tablewrap" id="results" style="display:none">
+    <table>
+      <thead><tr><th>#</th><th>Area</th><th>Check</th><th>Request</th><th>Result</th></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <footer>Each run uses unique node names (for example <code>ServerA-k3x9</code>), so it never clashes with existing data or with other people's runs.</footer>
+</main>
+
+<script>
+// Update this after deploying. It is used when the page is opened as a downloaded file.
+var DEFAULT_LIVE_URL = "https://network-latency-router.onrender.com";
+
+(function () {
+  var params = new URLSearchParams(location.search);
+  var initial = params.get("api") ||
+    (location.protocol.indexOf("http") === 0 ? location.origin : DEFAULT_LIVE_URL);
+  document.getElementById("url").value = initial;
+})();
+
+var $ = function (id) { return document.getElementById(id); };
+var tbody = $("tbody");
+
+function setStatus(kind, text) {
+  var el = $("status");
+  el.className = "status " + kind;
+  el.textContent = text;
+}
+
+function cell(tr, text, cls) {
+  var td = document.createElement("td");
+  if (cls) td.className = cls;
+  if (text instanceof Node) td.appendChild(text); else td.textContent = text;
+  tr.appendChild(td);
+  return td;
+}
+
+function addRow(n, area, name, request) {
+  var tr = document.createElement("tr");
+  cell(tr, String(n), "n");
+  cell(tr, area, "area");
+  cell(tr, name);
+  var code = document.createElement("code");
+  code.textContent = request;
+  cell(tr, code);
+  var res = cell(tr, "");
+  var badge = document.createElement("span");
+  badge.className = "badge wait";
+  badge.textContent = "running…";
+  res.appendChild(badge);
+  tbody.appendChild(tr);
+  return {
+    pass: function () { badge.className = "badge pass"; badge.textContent = "✓ PASS"; },
+    fail: function (why) {
+      badge.className = "badge fail"; badge.textContent = "✗ FAIL";
+      var d = document.createElement("div"); d.className = "detail"; d.textContent = why; res.appendChild(d);
+    }
+  };
+}
+
+async function call(base, method, path, body, timeoutMs) {
+  var ctrl = new AbortController();
+  var timer = setTimeout(function () { ctrl.abort(); }, timeoutMs || 30000);
+  try {
+    var opts = { method: method, signal: ctrl.signal, headers: {} };
+    if (body !== undefined) {
+      opts.headers["Content-Type"] = "application/json";
+      opts.body = typeof body === "string" ? body : JSON.stringify(body);
+    }
+    var r = await fetch(base + path, opts);
+    var text = await r.text();
+    var json = null;
+    try { json = text ? JSON.parse(text) : null; } catch (e) { /* not JSON */ }
+    return { status: r.status, json: json, text: text };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function wakeUp(base) {
+  var deadline = Date.now() + 120000;
+  var attempt = 0;
+  while (Date.now() < deadline) {
+    attempt++;
+    setStatus("run", attempt === 1 ? "Connecting to the API…" :
+      "Waiting for the server to wake up (free tier)… attempt " + attempt);
+    try {
+      var r = await call(base, "GET", "/nodes", undefined, 25000);
+      if (r.status === 200) return true;
+    } catch (e) { /* retry */ }
+    await new Promise(function (res) { setTimeout(res, 3000); });
+  }
+  return false;
+}
+
+function same(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+function close(a, b) { return typeof a === "number" && Math.abs(a - b) < 1e-6; }
+function short(r) { return r.status + " " + (r.text || "").slice(0, 160); }
+
+async function runAll() {
+  var base = $("url").value.trim().replace(/\/+$/, "");
+  if (!/^https?:\/\//.test(base)) { setStatus("fail", "Enter a full address starting with http:// or https://"); return; }
+
+  $("run").disabled = true;
+  tbody.innerHTML = "";
+  $("results").style.display = "none";
+  var started = Date.now();
+
+  if (!(await wakeUp(base))) {
+    setStatus("fail", "Could not reach the API at " + base + ". Check the address and your internet connection, then try again.");
+    $("run").disabled = false;
+    return;
+  }
+  $("results").style.display = "";
+  setStatus("run", "Running checks…");
+
+  var id = Math.random().toString(36).slice(2, 6);
+  var N = {};
+  ["A", "B", "C", "D", "E"].forEach(function (k) { N[k] = "Server" + k + "-" + id; });
+  var nodeIds = {}, edgeIds = {};
+  var count = 0, passed = 0, failed = 0;
+
+  // Runs one check. fn returns null on success or a reason string on failure.
+  async function check(area, name, request, fn) {
+    count++;
+    var row = addRow(count, area, name, request);
+    try {
+      var why = await fn();
+      if (why) { failed++; row.fail(why); } else { passed++; row.pass(); }
+    } catch (e) {
+      failed++; row.fail("Request failed: " + e.message);
+    }
+  }
+  function expect(r, status, extra) {
+    if (r.status !== status) return "Expected " + status + ", got " + short(r);
+    if (status >= 400 && !(r.json && typeof r.json.error === "string"))
+      return "Expected a body like {\"error\": \"...\"}, got " + short(r);
+    return extra ? extra(r.json) : null;
+  }
+  var post = function (p, b) { return call(base, "POST", p, b); };
+  var get = function (p) { return call(base, "GET", p); };
+  var del = function (p) { return call(base, "DELETE", p); };
+
+  // ---------------------------------------------------------------- nodes
+  await check("Nodes", "Create a node", "POST /nodes {name: " + N.A + "}", async function () {
+    var r = await post("/nodes", { name: N.A });
+    return expect(r, 201, function (j) {
+      if (j.name !== N.A || typeof j.id !== "number") return "Unexpected body: " + short(r);
+      nodeIds.A = j.id;
+    });
+  });
+  await check("Nodes", "Create 4 more nodes (B, C, D, E)", "POST /nodes ×4", async function () {
+    for (var k of ["B", "C", "D", "E"]) {
+      var r = await post("/nodes", { name: N[k] });
+      if (r.status !== 201) return N[k] + ": expected 201, got " + short(r);
+      nodeIds[k] = r.json.id;
+    }
+    return null;
+  });
+  await check("Nodes", "Reject a duplicate name", "POST /nodes {name: " + N.A + "}", async function () {
+    return expect(await post("/nodes", { name: N.A }), 400);
+  });
+  await check("Nodes", "Reject a missing name", "POST /nodes {}", async function () {
+    return expect(await post("/nodes", {}), 400);
+  });
+  await check("Nodes", "Reject a blank name", 'POST /nodes {name: "   "}', async function () {
+    return expect(await post("/nodes", { name: "   " }), 400);
+  });
+
+  // ---------------------------------------------------------------- edges
+  var edges = [["A", "B", 10], ["B", "D", 13.4], ["A", "C", 5], ["C", "D", 30], ["A", "D", 50]];
+  await check("Edges", "Create an edge", "POST /edges A→B latency 10", async function () {
+    var r = await post("/edges", { source: N.A, destination: N.B, latency: 10 });
+    return expect(r, 201, function (j) {
+      var want = { id: j.id, source: N.A, destination: N.B, latency: 10 };
+      if (!same(j, want)) return "Unexpected body: " + short(r);
+      edgeIds["A-B"] = j.id;
+    });
+  });
+  await check("Edges", "Create the rest of the sample network", "B→D 13.4, A→C 5, C→D 30, A→D 50", async function () {
+    for (var e of edges.slice(1)) {
+      var r = await post("/edges", { source: N[e[0]], destination: N[e[1]], latency: e[2] });
+      if (r.status !== 201) return e[0] + "→" + e[1] + ": expected 201, got " + short(r);
+      edgeIds[e[0] + "-" + e[1]] = r.json.id;
+    }
+    return null;
+  });
+  var badEdges = [
+    ["Reject a duplicate edge", "A→B again", { source: N.A, destination: N.B, latency: 7 }],
+    ["Reject latency = 0", "latency 0", { source: N.B, destination: N.C, latency: 0 }],
+    ["Reject a negative latency", "latency -5", { source: N.B, destination: N.C, latency: -5 }],
+    ["Reject a non-numeric latency", 'latency "abc"', { source: N.B, destination: N.C, latency: "abc" }],
+    ["Reject a missing latency", "no latency", { source: N.B, destination: N.C }],
+    ["Reject a missing destination", "no destination", { source: N.B, latency: 1 }],
+    ["Reject a node that doesn't exist", "B→NoSuchNode", { source: N.B, destination: "NoSuchNode-" + id, latency: 1 }],
+    ["Reject an edge from a node to itself", "B→B", { source: N.B, destination: N.B, latency: 1 }]
+  ];
+  for (var be of badEdges) {
+    await check("Edges", be[0], "POST /edges " + be[1], (function (b) {
+      return async function () { return expect(await post("/edges", b), 400); };
+    })(be[2]));
+  }
+
+  // ---------------------------------------------------------------- routes
+  await check("Routes", "Shortest route A→D is 23.4 via B", "POST /routes/shortest A→D", async function () {
+    var r = await post("/routes/shortest", { source: N.A, destination: N.D });
+    return expect(r, 200, function (j) {
+      if (!close(j.total_latency, 23.4) || !same(j.path, [N.A, N.B, N.D])) return "Unexpected body: " + short(r);
+    });
+  });
+  await check("Routes", "No path A→E returns 404", "POST /routes/shortest A→E", async function () {
+    var r = await post("/routes/shortest", { source: N.A, destination: N.E });
+    return expect(r, 404, function (j) {
+      var want = "No path exists between " + N.A + " and " + N.E;
+      if (j.error !== want) return 'Expected error "' + want + '", got ' + short(r);
+    });
+  });
+  await check("Routes", "Edges are one-way (D→A has no path)", "POST /routes/shortest D→A", async function () {
+    return expect(await post("/routes/shortest", { source: N.D, destination: N.A }), 404);
+  });
+  await check("Routes", "Same source and destination gives 0", "POST /routes/shortest A→A", async function () {
+    var r = await post("/routes/shortest", { source: N.A, destination: N.A });
+    return expect(r, 200, function (j) {
+      if (!close(j.total_latency, 0) || !same(j.path, [N.A])) return "Unexpected body: " + short(r);
+    });
+  });
+  await check("Routes", "Reject a node that doesn't exist", "POST /routes/shortest A→NoSuchNode", async function () {
+    return expect(await post("/routes/shortest", { source: N.A, destination: "NoSuchNode-" + id }), 400);
+  });
+  await check("Routes", "Reject a missing destination", "POST /routes/shortest {source}", async function () {
+    return expect(await post("/routes/shortest", { source: N.A }), 400);
+  });
+
+  // ---------------------------------------------------------------- history
+  var enc = encodeURIComponent;
+  await check("History", "Only successful queries are saved (2 for source A)", "GET /routes/history?source=A", async function () {
+    var r = await get("/routes/history?source=" + enc(N.A));
+    return expect(r, 200, function (j) {
+      if (!Array.isArray(j) || j.length !== 2) return "Expected 2 entries, got " + short(r);
+    });
+  });
+  await check("History", "Entries have the right fields and a UTC timestamp", "GET /routes/history?source=A&destination=D", async function () {
+    var r = await get("/routes/history?source=" + enc(N.A) + "&destination=" + enc(N.D));
+    return expect(r, 200, function (j) {
+      if (!Array.isArray(j) || j.length !== 1) return "Expected 1 entry, got " + short(r);
+      var h = j[0];
+      var keys = Object.keys(h).sort().join(",");
+      if (keys !== "created_at,destination,id,path,source,total_latency") return "Unexpected fields: " + keys;
+      if (!close(h.total_latency, 23.4) || !same(h.path, [N.A, N.B, N.D])) return "Unexpected entry: " + short(r);
+      if (!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(h.created_at)) return "created_at not like 2026-02-20T14:32:00Z: " + h.created_at;
+    });
+  });
+  await check("History", "Filter by destination", "GET /routes/history?destination=D", async function () {
+    var r = await get("/routes/history?destination=" + enc(N.D));
+    return expect(r, 200, function (j) {
+      if (!Array.isArray(j) || j.length !== 1 || j[0].destination !== N.D) return "Expected 1 entry, got " + short(r);
+    });
+  });
+  await check("History", "limit=1 returns one entry", "GET /routes/history?source=A&limit=1", async function () {
+    var r = await get("/routes/history?source=" + enc(N.A) + "&limit=1");
+    return expect(r, 200, function (j) { if (!Array.isArray(j) || j.length !== 1) return "Expected 1 entry, got " + short(r); });
+  });
+  await check("History", "date_from in the future returns nothing", "GET /routes/history?date_from=<tomorrow>", async function () {
+    var tomorrow = new Date(Date.now() + 86400000).toISOString();
+    var r = await get("/routes/history?source=" + enc(N.A) + "&date_from=" + enc(tomorrow));
+    return expect(r, 200, function (j) { if (!Array.isArray(j) || j.length !== 0) return "Expected 0 entries, got " + short(r); });
+  });
+  await check("History", "date_from / date_to around now include the entries", "GET /routes/history?date_from=…&date_to=…", async function () {
+    var from = new Date(Date.now() - 3600000).toISOString(), to = new Date(Date.now() + 3600000).toISOString();
+    var r = await get("/routes/history?source=" + enc(N.A) + "&date_from=" + enc(from) + "&date_to=" + enc(to));
+    return expect(r, 200, function (j) { if (!Array.isArray(j) || j.length !== 2) return "Expected 2 entries, got " + short(r); });
+  });
+  await check("History", "Reject limit=0", "GET /routes/history?limit=0", async function () {
+    return expect(await get("/routes/history?limit=0"), 400);
+  });
+  await check("History", "Reject an invalid date", "GET /routes/history?date_from=not-a-date", async function () {
+    return expect(await get("/routes/history?date_from=not-a-date"), 400);
+  });
+
+  // ---------------------------------------------------------------- optional APIs
+  await check("Optional", "List nodes includes the 5 new nodes", "GET /nodes", async function () {
+    var r = await get("/nodes");
+    return expect(r, 200, function (j) {
+      var names = j.map(function (n) { return n.name; });
+      var missing = Object.values(N).filter(function (n) { return names.indexOf(n) < 0; });
+      if (missing.length) return "Missing: " + missing.join(", ");
+    });
+  });
+  await check("Optional", "List edges includes the 5 new edges", "GET /edges", async function () {
+    var r = await get("/edges");
+    return expect(r, 200, function (j) {
+      var ids = j.map(function (e) { return e.id; });
+      var missing = Object.values(edgeIds).filter(function (e) { return ids.indexOf(e) < 0; });
+      if (missing.length) return "Missing edge ids: " + missing.join(", ");
+    });
+  });
+  await check("Optional", "Delete an edge (A→D)", "DELETE /edges/" + edgeIds["A-D"], async function () {
+    var r = await del("/edges/" + edgeIds["A-D"]);
+    return r.status === 204 ? null : "Expected 204, got " + short(r);
+  });
+  await check("Optional", "Deleting it again returns 404", "DELETE /edges/" + edgeIds["A-D"], async function () {
+    return expect(await del("/edges/" + edgeIds["A-D"]), 404);
+  });
+  await check("Optional", "Delete a node (C) also removes its edges", "DELETE /nodes/" + nodeIds.C, async function () {
+    var r = await del("/nodes/" + nodeIds.C);
+    if (r.status !== 204) return "Expected 204, got " + short(r);
+    var e = await get("/edges");
+    var left = e.json.filter(function (x) { return x.source === N.C || x.destination === N.C; });
+    if (left.length) return "Edges to/from " + N.C + " still exist";
+    return null;
+  });
+  await check("Optional", "Deleting a missing node returns 404", "DELETE /nodes/" + nodeIds.C, async function () {
+    return expect(await del("/nodes/" + nodeIds.C), 404);
+  });
+
+  // ---------------------------------------------------------------- cleanup
+  if ($("cleanup").checked) {
+    await check("Cleanup", "Delete this run's test data", "DELETE /nodes/{id} ×4", async function () {
+      for (var k of ["A", "B", "D", "E"]) {
+        var r = await del("/nodes/" + nodeIds[k]);
+        if (r.status !== 204) return N[k] + ": expected 204, got " + short(r);
+      }
+      return null;
+    });
+  }
+
+  var secs = ((Date.now() - started) / 1000).toFixed(1);
+  if (failed === 0) setStatus("pass", "✓ All " + count + " checks passed (" + secs + "s)");
+  else setStatus("fail", "✗ " + failed + " of " + count + " checks failed, " + passed + " passed (" + secs + "s)");
+  $("run").disabled = false;
+}
+
+$("run").addEventListener("click", function () {
+  runAll().catch(function (e) {
+    setStatus("fail", "Something went wrong: " + e.message);
+    $("run").disabled = false;
+  });
+});
+</script>
+</body>
+</html>
