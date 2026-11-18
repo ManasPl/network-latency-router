@@ -4,14 +4,20 @@ REST API to add servers (nodes) and connections between them (edges) with latenc
 
 Built with Python, FastAPI, SQLAlchemy and SQLite.
 
-**Test case sheet:** [Google Sheet](https://docs.google.com/spreadsheets/d/1nB3-jVa17EKDzB4DhaVCn0ZFpeG1qlxXEA1b57c6KQE/edit?usp=sharing)
+## Live demo
+
+- **API docs (try every endpoint):** https://network-latency-router.onrender.com/docs
+- **Run all checks in one click:** https://network-latency-router.onrender.com/check
+- **Test case sheet:** [Google Sheet](https://docs.google.com/spreadsheets/d/1nB3-jVa17EKDzB4DhaVCn0ZFpeG1qlxXEA1b57c6KQE/edit?usp=sharing)
+
+The demo runs on Render's free plan. The server sleeps when idle, so the first request can take about 50 seconds. Data on the live server is reset whenever it restarts.
 
 ## Check that it works (no setup needed)
 
 The file [`static/api-checker.html`](static/api-checker.html) runs 36 checks against the API in the browser and shows a pass or fail for each one. It covers every endpoint, the error cases and the spec's sample network (ServerA → ServerD = 23.4).
 
-- **Live:** open `https://network-latency-router.onrender.com/check` and click **Run all checks**.
-- **Downloaded file:** double-click `api-checker.html` to open it in any browser, then click **Run all checks**. The live API address is already filled in.
+- **Live:** open https://network-latency-router.onrender.com/check and click **Run all checks**.
+- **Downloaded file:** double-click `api-checker.html` to open it in any browser, then click **Run all checks**. The live API address is already filled in. To test a local server instead, change the address to `http://127.0.0.1:8000`.
 - **Local server:** start the server (see below), open http://127.0.0.1:8000/check and click **Run all checks**.
 
 Each run uses its own node names and deletes its test data afterwards, so it can be run any number of times.
@@ -23,8 +29,8 @@ You need Python 3.9 or newer.
 **1. Clone the repo**
 
 ```bash
-git clone <repo-url>
-cd <repo-folder>
+git clone https://github.com/ManasPl/network-latency-router.git
+cd network-latency-router
 ```
 
 **2. Create a virtual environment and install dependencies**
@@ -54,6 +60,7 @@ uvicorn app.main:app --reload
 **4. Try the APIs**
 
 - Open http://127.0.0.1:8000/docs in a browser. Click any endpoint, then **Try it out** → **Execute**.
+- Open http://127.0.0.1:8000/check and click **Run all checks** to run all 36 checks.
 - Or use the curl commands in the example below.
 
 Data is stored in `network.db` (SQLite). It is created automatically, and you can delete it to start fresh. You can change the database with the `DATABASE_URL` env variable.
